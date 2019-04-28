@@ -7,7 +7,7 @@ import sys
 port=[
     p.device
     for p in serial.tools.list_ports.comports()
-    if 'Arduino' in p.description
+    if 'CH340' or 'Arduino' in p.description
 ]
 # we need to find exactly one port
 nr=len(port)
@@ -20,50 +20,58 @@ if (nr>1):
 
 # open the port 
 try:
-	arduino = serial.Serial(port[0], 1000000)
+	#arduino = serial.Serial(port[0], 1000000, timeout=30)
+	arduino = serial.Serial(port[0], 1000000, timeout=None)
 except:
 	print ("Failed to connect on Arduino.")
 	sys.exit(1)
 
-# open a file
+# open 2 disk images
 try:
-   	f=open('DRIVEA.dsk','rb+')
+    #disk=[open('driveb.dsk','rb+'),open('ease_or.dsk','rb+')]
+    disk=[open('ease_or.dsk','rb+'),open('driveb.dsk','rb+')]
 except:
-    print ("Failed to open disk image file.")
+    print ("Failed to open disk image files.")
     sys.exit(1)
 
+#main loop, wait for  commands from Arduino
 while (1):
-    print("waiting for command")
+    print("Ok")
     cmd=arduino.read(4)
+    t0=time.clock()
     # write 'W'
     if (cmd[0]==87):
-        disk=cmd[1]
+        disknr=cmd[1]
         sector=cmd[2]+256*cmd[3]
         if (sector>=0 and sector<1440):
-            print("Disk:",disk,"Write sector:",sector)
+            print("Disk:",disknr,"Write sector:",sector)
             data=arduino.read(512)
-            # disable writing for now...
-            f.seek(512*sector)
-            f.write(data)
+            disk[disknr].seek(512*sector)
+            disk[disknr].write(data)
         else:
-            print("Invalid sector write:",sector)
+            print("\nInvalid sector write:",sector)
 
     # read 'R'
     if (cmd[0]==82):
-        disk=cmd[1]
+        disknr=cmd[1]
         sector=cmd[2]+cmd[3]*256
         if (sector>=0 and sector<1440):
-            f.seek(512*sector)
-            data=f.read(512)
+            disk[disknr].seek(512*sector)
+            data=disk[disknr].read(512)
+            t1=time.clock()
             arduino.write(data)
-            print("Disk:",disk,"Read sector:",sector)
+            t2=time.clock()
+            print("Disk:",disknr,"Read sector:",sector)
+            print("dt read:{0}ms. dt write:{1}ms".format((t1-t0)*1000,(t2-t1)*1000))
         else:
             print("Invalid sector read:",sector)
 
-    if (cmd[0]==67 and cmd[1]==0):
-        code=cmd[2]+cmd[3]*512
-        print(cmd[2],cmd[3])
-
-f.close()
+    # comment 'C'
+    if (cmd[0]==67):
+        comment=arduino.readline()
+        print(comment.decode(encoding='UTF-8'))
+#close handles and exit
+disk[0].close()
+disk[1].close()
 arduino.close()
 sys.exit()
